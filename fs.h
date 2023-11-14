@@ -39,6 +39,10 @@ public:
 
     INE5412_FS(Disk *d) {
         disk = d;
+
+        fs_block block;
+        this->disk->read(0, block.data);
+        this->superblock = block.super;
     } 
 
     void fs_debug();
@@ -54,6 +58,13 @@ public:
 
 private:
     Disk *disk;
+    fs_superblock superblock;
+
+    fs_block read_block(int blocknum) {
+        fs_block block;
+        this->disk->read(blocknum, block.data);
+        return block;
+    }
 };
 
 #endif
