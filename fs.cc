@@ -1,8 +1,39 @@
 #include "fs.h"
+#include <cmath>
 
 int INE5412_FS::fs_format()
 {
-	return 0;
+	// Check if the file system is already mounted
+    if (mounted) {
+        cout << "Error: File system is already mounted. Format operation aborted.\n";
+        return 0; // Return failure
+    }
+
+	// Calculate block distribution 
+	int total_blocks = disk->size();
+	int inode_blocks = static_cast<int>(std::ceil(total_blocks * 0.1));
+
+	// Reserving ten percent of blocks to inodes
+	superblock.ninodeblocks = inode_blocks;
+	superblock.ninodes = inode_blocks * INODES_PER_BLOCK;
+
+	// Freeing the inode table
+	for (int i = 1; i <= inode_blocks; ++i) {
+		fs_block inode_block;
+		for (int j = 0; j < INODES_PER_BLOCK; ++j) {
+			inode_block.inode[j].isvalid = false;
+		}
+		disk->write(i, inode_block.data);
+	}
+
+	// Writing the superblock
+	superblock.magic = FS_MAGIC;
+	superblock.nblocks = total_blocks;
+	fs_block new_superblock;
+	new_superblock.super = superblock;
+	disk->write(0, new_superblock.data);
+
+	return 1; // Return success
 }
 
 void INE5412_FS::fs_debug()
@@ -51,7 +82,54 @@ void INE5412_FS::fs_debug()
 
 int INE5412_FS::fs_mount()
 {
-	return 0;
+	if (mounted) {
+        cout << "Error: File system is already mounted.\n";
+        return 0; // Return failure
+    }
+
+	// Read the superblock from disk
+	fs_block superblock_block;
+	disk->read(0, superblock_block.data);
+	superblock = superblock_block.super;
+
+	// Check if the magic number is valid
+	if (superblock.magic != FS_MAGIC) {
+		cout << " Error: Invalid magic number. Not a valid file system.\n";
+		return 0; // Return failure
+	}
+
+	// Build a bitmap of free blocks
+	vector<bool> free_blocks(superblock.nblocks, true); // Assume all blocks are ionitially free
+
+	// Mark inode blocks as used
+	for (int i = 1; i <= superblock.ninodeblocks; ++i) {
+		free_blocks[i] = false;
+	}
+
+	// Mark data blocks used by valid inodes
+	for (int i = 1; i <= superblock.ninodeblocks; ++i) {
+		fs_block inode_block = read_block(i);
+		for (int j = 0; j < INODES_PER_BLOCK; ++j) {
+			fs_inode inode = inode_block.inode[j];
+			if (inode.isvalid) {
+				for (int k = 0; k < POINTERS_PER_INODE; ++k) {
+					if (inode.direct[k]) {
+						free_blocks[inode.direct[k]] = false;
+					}
+				}
+				if (inode.indirect) {
+					fs_block indirect_block = read_block(inode.indirect);
+					for (int k = 0; k < POINTERS_PER_BLOCK; ++k) {
+						if (indirect_block.pointers[k]) {
+							free_blocks[indirect_block.pointers[k]] = false;
+						}
+					}
+				}
+			}
+		} 
+	}
+	mounted = true;
+	return 1; // Return success
 }
 
 int INE5412_FS::fs_create()

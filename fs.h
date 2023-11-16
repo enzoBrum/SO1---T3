@@ -2,6 +2,7 @@
 #define FS_H
 
 #include "disk.h"
+#include <vector>
 
 class INE5412_FS
 {
@@ -59,6 +60,8 @@ public:
 private:
     Disk *disk;
     fs_superblock superblock;
+    bool mounted = false;
+    vector<bool> free_blocks;
 
     fs_block read_block(int blocknum) {
         fs_block block;
