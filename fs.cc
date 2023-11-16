@@ -132,9 +132,49 @@ int INE5412_FS::fs_mount()
 	return 1; // Return success
 }
 
-int INE5412_FS::fs_create()
-{
-	return 0;
+int INE5412_FS::fs_create() {
+    if (!mounted) {
+        cout << "Error: File system is not mounted.\n";
+        return 0; // Return failure
+    }
+
+    // Step 1: Find a free inode
+    int freeInode = find_free_inode();
+
+    if (freeInode == 0) {
+        cout << "Error: No free inodes available.\n";
+        return 0; // Return failure
+    }
+
+    // Step 2: Mark the inode as used
+    fs_block inodeBlock = read_block(1 + (freeInode - 1) / INODES_PER_BLOCK);
+    fs_inode *inode = &inodeBlock.inode[(freeInode - 1) % INODES_PER_BLOCK];
+    inode->isvalid = 1; // Mark the inode as valid
+    inode->size = 0;    // New inode with zero length
+
+    // Write the updated inode block back to disk
+    disk->write(1 + (freeInode - 1) / INODES_PER_BLOCK, inodeBlock.data);
+
+    // Step 3: Return the inode number (positive)
+    return freeInode;
+}
+
+int INE5412_FS::find_free_inode() {
+    // Iterate through inodes to find the first free one
+    for (int i = 1; i <= superblock.ninodes; ++i) {
+        fs_block inodeBlock = read_block(1 + (i - 1) / INODES_PER_BLOCK);
+        fs_inode *inode = &inodeBlock.inode[(i - 1) % INODES_PER_BLOCK];
+
+        if (!inode->isvalid) {
+            // Mark the inode as used
+            inode->isvalid = 1;
+            disk->write(1 + (i - 1) / INODES_PER_BLOCK, inodeBlock.data);
+
+            return i; // Return the inode number
+        }
+    }
+
+    return 0; // No free inode found
 }
 
 int INE5412_FS::fs_delete(int inumber)

@@ -51,6 +51,7 @@ public:
     int  fs_mount();
 
     int  fs_create();
+    int  find_free_inode();
     int  fs_delete(int inumber);
     int  fs_getsize(int inumber);
 
