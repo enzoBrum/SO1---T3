@@ -138,7 +138,7 @@ int INE5412_FS::fs_create() {
         return 0; // Return failure
     }
 
-    // Step 1: Find a free inode
+    // Find a free inode
     int freeInode = find_free_inode();
 
     if (freeInode == 0) {
@@ -146,7 +146,7 @@ int INE5412_FS::fs_create() {
         return 0; // Return failure
     }
 
-    // Step 2: Mark the inode as used
+    // Mark the inode as used
     fs_block inodeBlock = read_block(1 + (freeInode - 1) / INODES_PER_BLOCK);
     fs_inode *inode = &inodeBlock.inode[(freeInode - 1) % INODES_PER_BLOCK];
     inode->isvalid = 1; // Mark the inode as valid
@@ -179,7 +179,52 @@ int INE5412_FS::find_free_inode() {
 
 int INE5412_FS::fs_delete(int inumber)
 {
-	return 0;
+	if (!mounted) {
+        cout << "Error: File system is not mounted.\n";
+        return 0;
+	}
+
+	if (inumber <= 0 || inumber > superblock.ninodes) {
+		cout << "Error: Invalid inode number.\n";
+		return 0;
+	}
+
+	// Read the inode block containing the target inode
+	fs_block inodeBlock = read_block(1 + (inumber - 1) / INODES_PER_BLOCK);
+	fs_inode *inode = &inodeBlock.inode[(inumber - 1) % INODES_PER_BLOCK];
+
+	// Check if the inode is valid
+	if (!inode->isvalid) {
+		cout << "Error: Inode is not valid.\n";
+		return 0;
+	}
+
+	// Free data blocks and indirect blocks associated with the inode
+	for (int i = 0; i < POINTERS_PER_INODE; i++) {
+		if (inode->direct[i]) {
+			// Free the direct block
+			free_blocks[inode->direct[i]] = false;
+		}
+	}
+	if (inode->indirect) {
+		// Free the indirect block
+		free_blocks[inode->indirect] = false;
+
+		// Free data blocks pointed by the indirect block
+		fs_block indirectBlock = read_block(inode->indirect);
+		for (int i = 0; i < POINTERS_PER_BLOCK; ++i) {
+			if (indirectBlock.pointers[i]) {
+				free_blocks[indirectBlock.pointers[i]] = false;
+			}
+		}
+	}
+	// Mark the inode as invalid
+	inode->isvalid = 0;
+
+	// Write the update inode block back to the disk
+	disk->write(1 + (inumber - 1) / INODES_PER_BLOCK, inodeBlock.data);
+	return 1;
+
 }
 
 int INE5412_FS::fs_getsize(int inumber)
